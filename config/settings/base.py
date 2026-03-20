@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import timedelta
 import environ
 
 
@@ -21,7 +22,7 @@ ROOT_URLCONF = 'config.urls'
 
 ASGI_APPLICATION = 'config.asgi.application'  
 
-
+AUTH_USER_MODEL='users.User'
 
 
 # Application definition -----------------------------------------------
@@ -35,6 +36,8 @@ INSTALLED_APPS = [
 
     #third party services 
     'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'drf_spectacular',    
 
@@ -79,6 +82,8 @@ REST_FRAMEWORK = {
         # Default: require login for everything — opt out per view with AllowAny
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_PAGINATION_CLASS" : "core.pagination.StandardResultsPagination",
+    "PAGE_SIZE" : 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
 }
@@ -99,6 +104,17 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
 }
  
+# ── JWT Config ────────────────────────────────────────────────────────────────
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME":  timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    # Rotation: every time you use a refresh token, you get a new one.
+    # The old one is blacklisted. This limits the damage of a stolen refresh token.
+    "ROTATE_REFRESH_TOKENS":     True,
+    "BLACKLIST_AFTER_ROTATION":  True,
+    "AUTH_HEADER_TYPES":         ("Bearer",),
+    "UPDATE_LAST_LOGIN":         False,  # We handle last_login ourselves in LoginView
+}
 
 
 
@@ -116,8 +132,9 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD  = 'django.db.models.BigAutoField'
 
 
-STATIC_URL = '/static/'
-MEDIA_URL = '/media/'
+STATIC_URL = 'static/'
+STATIC_ROOT = 'staticFiles/'
+MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 

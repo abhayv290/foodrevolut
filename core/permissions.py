@@ -1,0 +1,26 @@
+from rest_framework.permissions import BasePermission
+
+
+#Creating custom Permission classes to handle the permission for all role type 
+
+class IsCustomer(BasePermission):
+    message='Access restricted to customers.'
+
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.is_customer
+
+
+class IsRestaurantOwner(BasePermission):
+    message = 'Access restricted to restaurant owners.'
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.is_restaurant_owner
+
+
+class IsDeliveryAgent(BasePermission):
+    message  = 'Access restricted to delivery agents'
+    
+    def has_permission(self,request,view):
+        return request.user and request.user.is_authenticated and request.user_is_delivery_agent
+    
+
+
