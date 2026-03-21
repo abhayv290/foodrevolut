@@ -15,10 +15,13 @@ class IsRestaurantOwner(BasePermission):
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated and request.user.is_restaurant_owner
 
+class IsOwnerOfRestaurant(BasePermission):
+    message = 'you dont own this restaurant'
+    def has_object_permission(self, request, view, obj):
+        return request.user == obj.owner
 
 class IsDeliveryAgent(BasePermission):
     message  = 'Access restricted to delivery agents'
-    
     def has_permission(self,request,view):
         return request.user and request.user.is_authenticated and request.user_is_delivery_agent
     

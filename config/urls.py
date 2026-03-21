@@ -11,7 +11,11 @@ API = 'api/v1/'
 urlpatterns = [
     path('admin/', admin.site.urls),
     
+    #Auth
     path(API,include(('apps.users.urls' , 'users'))),
+
+    #restaurants
+    path(f"{API}restaurants/",include('apps.restaurants.urls','restaurants')),
 
     #Swagger Ui 
     path('api/schema',SpectacularAPIView.as_view(),name='schema'),

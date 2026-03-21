@@ -40,10 +40,12 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'drf_spectacular',    
+    'django_filters',
 
 
     #my apps 
-    'apps.users'
+    'apps.users',
+    'apps.restaurants',
 
 ]
 #middleware configurations -----------------------------------------------
@@ -82,6 +84,11 @@ REST_FRAMEWORK = {
         # Default: require login for everything — opt out per view with AllowAny
         "rest_framework.permissions.IsAuthenticated",
     ],
+
+     "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+    ],
+
     "DEFAULT_PAGINATION_CLASS" : "core.pagination.StandardResultsPagination",
     "PAGE_SIZE" : 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -106,8 +113,8 @@ SPECTACULAR_SETTINGS = {
  
 # ── JWT Config ────────────────────────────────────────────────────────────────
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME":  timedelta(minutes=60),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME":  timedelta(days=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=10),
     # Rotation: every time you use a refresh token, you get a new one.
     # The old one is blacklisted. This limits the damage of a stolen refresh token.
     "ROTATE_REFRESH_TOKENS":     True,
