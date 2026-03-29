@@ -20,7 +20,8 @@ urlpatterns = [
     path(f"{API}restaurants/",include(('apps.restaurants.urls','restaurants'))),
     #payments
     path(f"{API}payments/",include(('apps.payments.urls','payments'))),
-
+    #reviews 
+    path(f"{API}reviews/",include('apps.reviews.urls')),
     #Swagger Ui 
     path('api/schema',SpectacularAPIView.as_view(),name='schema'),
     path('api/docs/',SpectacularSwaggerView.as_view(url_name='schema'),name='swagger-ui'),

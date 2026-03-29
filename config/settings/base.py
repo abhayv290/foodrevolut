@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'apps.orders',
     'apps.payments',
     'apps.tracking',
+    'apps.reviews',
 
 ]
 #middleware configurations -----------------------------------------------
@@ -121,8 +122,8 @@ CORS_ALLOW_CREDENTIALS = True
 
 # ── API Docs ──────────────────────────────────────────────────────────────────
 SPECTACULAR_SETTINGS = {
-    "TITLE":       "Zwigato-Food Delivery API",
-    "DESCRIPTION": "Backend for a  Zwigato(Swiggy/Zomato-style)  food delivery platform.",
+    "TITLE":       "DjFood-FoodDeliveryAPI",
+    "DESCRIPTION": "Backend for a  (Swiggy/Zomato-style)  food delivery platform.",
     "VERSION":     "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
