@@ -6,7 +6,7 @@ from .views import (
     ChangePasswordView,RestaurantOwnerProfileView,ResendVerificationEmailView,
     AgentAvailabilityView,DeliveryAgentRegisterView,DeliveryAgentProfileView,
     RestaurantOwnerRegisterView,LoginView,LogoutView,MeView,
-    VerifyEmailView ,DeliveryAgentProfileLocation
+    VerifyEmailView ,DeliveryAgentProfileLocation,ForgotPasswordView,ResetPasswordView
 )
 
 app_name = "users"
@@ -25,6 +25,8 @@ urlpatterns = [
 
     #  Password ---------------------------------------------------------------------
     path("auth/password/change/", ChangePasswordView.as_view(), name="password-change"),
+    path('auth/password/forgot/',ForgotPasswordView.as_view(),name='forgot-password'),
+    path('auth/password/reset/',ResetPasswordView.as_view(),name='password-reset'),
 
     #  Email verification ------------------------------------------------------
     # GET  ?token=<uuid>  — user clicks link from email

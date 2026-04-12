@@ -24,4 +24,7 @@ SILKY_PYTHON_PROFILER = True
 SILKY_INTERCEPT_PERCENT = 100
 
 
+#Email 
+# EMAIL_BACKEND= 'emails.console.backend'
+
 

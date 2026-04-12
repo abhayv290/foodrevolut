@@ -166,20 +166,35 @@ class ChangePasswordSerializer(Serializer):
 class ForgotPasswordSerializer(Serializer):
     email = EmailField()
     def validate_email(self,value):
-        if not User.objects.filter(email=value).exists():
-            pass
+        try:
+            user = User.objects.get(email=value,is_active=True)
+        except User.DoesNotExist:
+            return value
+        self.context['user']=user
         return value
 
 class ResetPasswordSerializer(Serializer):
-    email = EmailField()
-    otp = CharField(max_length=6)
     new_password = CharField(write_only=True,min_length=8)
     confirm_password=CharField(write_only=True)
     
     def validate(self,attrs):
+        token = self.context['token']
+        #verify token
+        try:
+            token_obj = EmailVerificationToken.objects.select_related('user').get(token=token)
+        except EmailVerificationToken.DoesNotExist:
+            raise ValidationError({'error':'Invalid Password Reset Link'})
+        
+        if not token_obj.is_valid():
+            raise ValidationError({'error':'Token is Invalid or Expired'})
+        
         if attrs.get('new_password')!=attrs.get('confirm_password'):
             raise ValidationError({'password_mismatch':'Passwords do not match'})
+        
+        self.context['token_obj']=token_obj
         return attrs
+
+
 
 
 
@@ -308,6 +323,6 @@ class ResendVerificationEmailSerializer(Serializer):
         if user.is_email_verified: #type:ignore
             raise ValidationError('This email is already verified')
 
-        self.context['user'] =user
+        self.context['user'] = user
         return value
 

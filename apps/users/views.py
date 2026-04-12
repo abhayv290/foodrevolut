@@ -33,26 +33,27 @@ from .serialzers import (
     AgentLocationUpdateSerializer,
     EmailVerificationSerializer,
     ResendVerificationEmailSerializer,
+    ForgotPasswordSerializer,
     get_tokens_for_user,
 )
+from .emails import send_verification_email,send_password_reset_email
 
 
+# def send_verification_email(user,token):
 
-def send_verification_email(user,token):
-
-    link  = f"http://localhost:8000/api/v1/auth/email/verify/?token={token}"
-    # ── DEV:
-    print("\n" + "="*60)
-    print(f"  EMAIL VERIFICATION (dev mode)")
-    print(f"  To: {user.email}")
-    print(f"  Link: {link}")
-    print("="*60 + "\n")
+#     link  = f"http://localhost:8000/api/v1/auth/email/verify/?token={token}"
+#     # ── DEV:
+#     print("\n" + "="*60)
+#     print(f"  EMAIL VERIFICATION (dev mode)")
+#     print(f"  To: {user.email}")
+#     print(f"  Link: {link}")
+#     print("="*60 + "\n")
 
 
 
 def create_verification_token(user):
     EmailVerificationToken.objects.filter(user=user).delete()
-    token_obj=EmailVerificationToken.objects.create(user=user,expires_at=timezone.now()+timedelta(hours=24))
+    token_obj=EmailVerificationToken.objects.create(user=user,expires_at=timezone.now()+timedelta(minutes=10))
     return token_obj.token
 
 
@@ -181,13 +182,36 @@ class ChangePasswordView(APIView):
         user.save(update_fields=['password'])
         return Response({'message' : 'Password Updated'})
     
+@extend_schema(tags=['Auth'],request=ForgotPasswordSerializer)
+class ForgotPasswordView(APIView):
+    permission_classes = [AllowAny]    
+    def post(self,request):
+        ser = ForgotPasswordSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        user = ser.context['user']
+        token = create_verification_token(user)
+        send_password_reset_email(user,token)
+        return Response(
+            {'message' : f"Password reset Link has been send to your registered Email:{user.email}"}
+        )
+
 #TODO 
 @extend_schema(tags=['Auth'])
-class ResetPassword(APIView):
+class ResetPasswordView(APIView):
     permission_classes=[AllowAny]
     def post(self,request):
-        serializer = ResetPasswordSerializer(data=request.data,context={'request' : request})
+        serializer = ResetPasswordSerializer(data=request.data,context={'token' : request.query_params.get('token')})
         serializer.is_valid(raise_exception=True)
+        token_obj = serializer.context['token_obj']
+        user  = token_obj.user
+        
+        #update new password
+        user.set_password(serializer.validated_data.get('new_password')) #type:ignore
+        user.save(update_fields=['password'])
+        token_obj.delete() #single use token
+        return Response({'message' : 'Password Reset Successful , You can now login with new password'})
+        
+
         
 
 
@@ -369,20 +393,18 @@ class VerifyEmailView(GenericAPIView):
  
 
 
-@extend_schema(tags=['Email Service'])
-class ResendVerificationEmailView(GenericAPIView):
+@extend_schema(tags=['Email Service'],request=ResendVerificationEmailSerializer,responses=ResendVerificationEmailSerializer)
+class ResendVerificationEmailView(APIView):
     """
     For users who didn't get the email or whose token expired.
     We validate the email, then generate and send a new token.
     """
     permission_classes = [AllowAny]
-    serializer_class = ResendVerificationEmailSerializer
-
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
+        serializer = ResendVerificationEmailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user = serializer.validated_data.get("user")
+        user = serializer.context['user']
         
         if user:
             token = create_verification_token(user)

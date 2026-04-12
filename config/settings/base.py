@@ -44,7 +44,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'drf_spectacular',    
     'django_filters',
-
+    'anymail',
 
     #my apps 
     'apps.users',
@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'apps.payments',
     'apps.tracking',
     'apps.reviews',
+    'apps.search',
 
 ]
 #middleware configurations -----------------------------------------------
@@ -138,6 +139,15 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION":  True,
     "AUTH_HEADER_TYPES":         ("Bearer",),
     "UPDATE_LAST_LOGIN":         False,  # We handle last_login ourselves in LoginView
+}
+
+#email configurations 
+EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
+DEFAULT_FROM_EMAIL = env.str('DEFAULT_FROM_EMAIL',default='noreply@foodrevolut.com')
+
+ANYMAIL = {
+    "MAILGUN_API_KEY":       env("MAILGUN_API_KEY"),
+    "MAILGUN_SENDER_DOMAIN": env("MAILGUN_DOMAIN"),
 }
 
 
