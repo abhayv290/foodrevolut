@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import timedelta
 import environ
-
+import ssl
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'drf_spectacular',    
     'django_filters',
     'anymail',
+    'django_celery_beat',
 
     #my apps 
     'apps.users',
@@ -88,7 +89,39 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG":  {"hosts": [{
             'address':env('REDIS_URL'),
+              "ssl_cert_reqs": ssl.CERT_NONE,
         }]},
+    }
+}
+
+CELERY_BROKER_URL = env('REDIS_URL')
+CELERY_RESULT_BACKEND = env('REDIS_URL')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+
+CELERY_BROKER_USE_SSL = {
+    "ssl_cert_reqs": ssl.CERT_NONE,
+}
+CELERY_REDIS_BACKEND_USE_SSL = {
+    "ssl_cert_reqs": ssl.CERT_NONE,
+}
+
+CELERY_BEAT_SCHEDULE = {
+    'cancel-unpaid-orders' :{
+        'task' : 'apps.orders.tasks.cancel_unpaid_orders',
+        'schedule' : 300   # pol every 5 minutes
+    }
+}
+
+
+#Caches Setup
+CACHES = {
+    'default' : {
+        'BACKEND' : 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION' : env('REDIS_URL'),
+        'OPTIONS'  : {
+             "ssl_cert_reqs": ssl.CERT_NONE,
+        }
     }
 }
 
@@ -123,8 +156,8 @@ CORS_ALLOW_CREDENTIALS = True
 
 # ── API Docs ──────────────────────────────────────────────────────────────────
 SPECTACULAR_SETTINGS = {
-    "TITLE":       "DjFood-FoodDeliveryAPI",
-    "DESCRIPTION": "Backend for a  (Swiggy/Zomato-style)  food delivery platform.",
+    "TITLE":       "FoodRevolut-FoodDeliveryAPI",
+    "DESCRIPTION": "Backend for a FoodRevolut (Swiggy/Zomato-style)  food delivery platform.",
     "VERSION":     "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
@@ -144,7 +177,7 @@ SIMPLE_JWT = {
 #email configurations 
 EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
 DEFAULT_FROM_EMAIL = env.str('DEFAULT_FROM_EMAIL',default='noreply@foodrevolut.com')
-
+FRONTEND_URL = env('FRONTEND_URL')
 ANYMAIL = {
     "MAILGUN_API_KEY":       env("MAILGUN_API_KEY"),
     "MAILGUN_SENDER_DOMAIN": env("MAILGUN_DOMAIN"),
@@ -168,8 +201,8 @@ DEFAULT_AUTO_FIELD  = 'django.db.models.BigAutoField'
 
 STATIC_URL = 'static/'
 STATIC_ROOT = 'staticFiles/'
-MEDIA_URL = 'media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# MEDIA_URL = 'media/'
+# MEDIA_ROOT = BASE_DIR / 'media'
 
 
 
@@ -206,3 +239,43 @@ TEMPLATES = [
         },
     },
 ]
+
+
+
+USE_S3  = env('USE_S3')==True
+if USE_S3:
+    INSTALLED_APPS += ["storages"]
+
+    AWS_ACCESS_KEY_ID        = env("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY    = env("AWS_SECRET_ACCESS_KEY") 
+    AWS_STORAGE_BUCKET_NAME  = env("AWS_STORAGE_BUCKET_NAME")
+    AWS_S3_REGION_NAME       = env.str("AWS_S3_REGION_NAME", default="ap-south-1")
+    AWS_S3_FILE_OVERWRITE    = False
+    AWS_DEFAULT_ACL          = None
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+    AWS_S3_ADDRESSING_STYLE  = "virtual"
+    AWS_QUERYSTRING_AUTH     = False
+
+    AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.ap-south-1.amazonaws.com"
+    AWS_LOCATION         = "media"
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {
+                "location":       "media",
+                "file_overwrite": False,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+
+    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/"
+else:
+    # local development — filesystem
+    STATIC_URL  = "/static/"
+    STATIC_ROOT = BASE_DIR / "staticfiles"
+    MEDIA_URL   = "/media/"
+    MEDIA_ROOT  = BASE_DIR / "media"

@@ -1,0 +1,59 @@
+# docker-compose.prod.yml — PRODUCTION (AWS EC2)
+# Static and media files served from S3 — no local volumes needed
+
+
+services:
+
+  # ── Django + Daphne ─────────────────────────────────────────────────────────
+  web:
+    image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+    command: daphne -b 0.0.0.0 -p 8000 config.asgi:application
+    env_file:
+      - .env.prod
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Celery worker ───────────────────────────────────────────────────────────
+  worker:
+    image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+    command: celery -A config worker --loglevel=info --concurrency=2
+    env_file:
+      - .env.prod
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    restart: unless-stopped
+    depends_on:
+      - web
+
+  # ── Celery beat ─────────────────────────────────────────────────────────────
+  beat:
+    image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file:
+      - .env.prod
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    restart: unless-stopped
+    depends_on:
+      - web
+
+  # ── Nginx ───────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # ── No static/media volumes ───────────────────────────────────────────
+      # Both served from S3 directly
+      # Nginx only handles API proxying and WebSocket upgrades
+    depends_on:
+      - web
+    restart: unless-stopped

@@ -28,3 +28,6 @@ SILKY_INTERCEPT_PERCENT = 100
 # EMAIL_BACKEND= 'emails.console.backend'
 
 
+# ── Celery Windows fix ────────────────────────────────────────────────────────
+CELERY_TASK_ALWAYS_EAGER = False   # keep False — tasks still go through Redis
+CELERY_WORKER_POOL = "solo"        # solo pool avoids Windows multiprocessing issues

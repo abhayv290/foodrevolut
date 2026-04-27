@@ -7,9 +7,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema
 from core.permissions import IsCustomer,IsDeliveryAgent,IsRestaurantOwner
-from rest_framework.generics import  CreateAPIView,ListAPIView,RetrieveAPIView
 from rest_framework.viewsets import ReadOnlyModelViewSet
 from .models import Cart,CartItem,Order,OrderItem,OrderStatusHistory
+from .tasks import assign_delivery_agent_task , notify_order_status_changed 
+
 
 from .serializers import (
     CartSerializer,CartItemSerializer,OrderSerializer,
@@ -125,6 +126,8 @@ class CheckoutView(APIView):
         serializer.is_valid(raise_exception=True)
         order = serializer.save()
 
+        #fire email notification for order summary
+        notify_order_status_changed.delay(str(order.id),Order.Status.PLACED) #type:ignore
         return Response(OrderSerializer(order).data)
 
 
@@ -189,10 +192,13 @@ class OrderStatusUpdateView(APIView):
         #apply status
         order.status = new_status
 
+        #fire email notification for every status update 
+        notify_order_status_changed.delay(str(order.id), new_status)  #type:ignore
+
         #assign a delivery agent when order is accepted by restaurant
         if new_status == order.Status.ACCEPTED and order.delivery_agent is None:
             from .utils import assign_delivery_agent    
-            assign_delivery_agent(order)
+            assign_delivery_agent_task.delay(str(order.id)) #type:ignore
 
         #set delivered , when order is delivered
         if new_status == order.Status.DELIVERED:
@@ -242,12 +248,15 @@ class CustomerCancelOrderView(APIView):
         order.cancellation_reason= reason
         order.save(update_fields=['status','cancelled_by','cancellation_reason'])
 
-        #notify the agent if assigned so that he can update his status to available
-        #not triggering direct to available cz , agent could be handling two orders 
+        # #notify the agent if assigned so that he can update his status to available
+        # #not triggering direct to available cz , agent could be handling two orders 
         
-        if order.delivery_agent:
-            from .utils import notify_agent
-            notify_agent(order.delivery_agent,order)
+        # if order.delivery_agent:
+        #     from .utils import notify_agent
+        #     notify_agent(order.delivery_agent,order)
+
+        #send cancellation email
+        notify_order_status_changed.delay(str(order.id),'CANCELLED') #type:ignore
         #Update the orderStatus History
         OrderStatusHistory.objects.create(
             order = order ,
@@ -255,6 +264,7 @@ class CustomerCancelOrderView(APIView):
             changed_by = request.user,
             note  = f"Cancelled by customer {reason}".strip(),
         )
+
         return Response({
             'message':'Order Cancelled.',
             'order_id' : str(order.id),

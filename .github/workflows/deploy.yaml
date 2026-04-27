@@ -1,0 +1,231 @@
+name: FoodRevolut CI/CD
+
+on:
+  push:
+    branches: [ main ] # full pipeline on main push
+  pull_request:
+    branches: [ main ] # tests only on PRs
+
+env:
+  AWS_REGION: ap-south-1 # Mumbai — closest to India
+  ECR_REPOSITORY: foodrevolut # ECR repo name
+  IMAGE_TAG: ${{ github.sha }} # unique tag per commit
+
+jobs:
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # JOB 1 — TEST (runs on every push and PR)
+  # ────────────────────────────────────────────────────────────────────────────
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    services:
+      # Spin up a PostgreSQL container for tests
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: test_foodrevolut
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: "pip"
+            # cache pip dependencies between runs
+            # saves ~1-2 minutes per run
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          # ── Test environment variables ──────────────────────────────────
+          # Use GitHub secrets for sensitive values
+          # Use inline values for test-specific config
+          DJANGO_SETTINGS_MODULE: config.settings.local
+          SECRET_KEY: test-secret-key-not-used-in-production
+          DEBUG: "True"
+          DB_NAME: test_foodrevolut
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          RAZORPAY_KEY_ID: test_key
+          RAZORPAY_KEY_SECRET: test_secret
+          MAILGUN_API_KEY: test_key
+          MAILGUN_SENDER_DOMAIN: test.mailgun.org
+          DEFAULT_FROM_EMAIL: test@test.com
+          FRONTEND_URL: http://localhost:3000
+        run: |
+          python manage.py migrate --noinput
+          python manage.py test --verbosity=2
+
+      - name: Check for missing migrations
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.local
+          SECRET_KEY: test-secret-key
+          DB_NAME: test_foodrevolut
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          DEFAULT_FROM_EMAIL: test@test.com
+          FRONTEND_URL: http://localhost:3000
+        run: |
+          # ── Why check migrations? ───────────────────────────────────────
+          # Catches the common mistake of editing a model
+          # without running makemigrations.
+          # Fails the build before it reaches production.
+          python manage.py migrate --noinput
+          python manage.py makemigrations --check --dry-run
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # JOB 2 — BUILD & PUSH TO ECR (only on main branch)
+  # ────────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test # only runs if tests pass
+    if: github.ref == 'refs/heads/main' # only on main, not PRs
+
+    outputs:
+      # Pass image URI to deploy job
+      image: ${{ steps.build-image.outputs.image }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag and push image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          # Build Docker image
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+
+          # Also tag as 'latest' for easy reference
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+                     $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+          # Push both tags to ECR
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+          # Output image URI for deploy job
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Image digest
+        run: echo "Image pushed → ${{ steps.build-image.outputs.image }}"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # JOB 3 — DEPLOY TO EC2 (only on main branch, after build)
+  # ────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }} # EC2 public IP
+          username: ubuntu # default EC2 user
+          key: ${{ secrets.EC2_SSH_KEY }} # private SSH key
+          envs: IMAGE_TAG,AWS_REGION
+          script: |
+            # ── What runs ON the EC2 server ──────────────────────────────
+
+            # Move to app directory
+            cd /home/ubuntu/fooddelivery
+
+                      # Pull latest code (for docker-compose.prod.yaml and nginx config)
+            git pull origin main
+
+            # Login to ECR from the server
+            aws ecr get-login-password --region $AWS_REGION | \
+              docker login --username AWS --password-stdin \
+              ${{ steps.login-ecr.outputs.registry }}
+
+            # Export variables for docker-compose
+            export ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+            export ECR_REPOSITORY=fooddelivery
+            export IMAGE_TAG=${{ env.IMAGE_TAG }}
+
+            # Pull the new image
+                      docker compose -f docker-compose.prod.yaml pull
+
+            # ── Zero-downtime restart ─────────────────────────────────────
+            # Start new containers before stopping old ones
+                      docker compose -f docker-compose.prod.yaml up -d --no-deps web
+                      docker compose -f docker-compose.prod.yaml up -d --no-deps worker
+                      docker compose -f docker-compose.prod.yaml up -d --no-deps beat
+                      docker compose -f docker-compose.prod.yaml up -d --no-deps nginx
+
+            # Run migrations on the new container
+                      docker compose -f docker-compose.prod.yaml exec -T web \
+              python manage.py migrate --noinput
+
+            # Clean up old Docker images to save disk space
+            docker image prune -f
+
+            echo "✅ Deployment complete — image: $IMAGE_TAG"
+
+      - name: Health check after deploy
+        run: |
+          # Wait for app to start
+          sleep 15
+
+          # Hit health endpoint to verify deployment succeeded
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://${{ secrets.EC2_HOST }}/api/health/)
+
+          if [ $response -eq 200 ]; then
+            echo "✅ Health check passed"
+          else
+            echo "❌ Health check failed — HTTP $response"
+            exit 1
+          fi

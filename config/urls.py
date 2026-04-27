@@ -4,13 +4,16 @@ from django.urls import path ,include
 from django.conf import settings 
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView , SpectacularSwaggerView ,SpectacularRedocView
+from django.http import HttpResponse
+def health(req):
+    return HttpResponse('server running')
 
 
 API = 'api/v1/'
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    
+    path('api/health/',health,name='api-health'),
     #Auth
     path(API,include(('apps.users.urls' , 'users'))),
 
@@ -31,5 +34,5 @@ urlpatterns = [
 ] 
 
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += path('silk/', include('silk.urls', namespace='silk')),

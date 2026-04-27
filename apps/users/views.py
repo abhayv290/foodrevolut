@@ -16,7 +16,7 @@ from rest_framework.generics import (
     ListCreateAPIView
 )
 from drf_spectacular.utils import extend_schema
-
+from .tasks import notify_new_login
 from core.permissions import IsCustomer,IsRestaurantOwner,IsDeliveryAgent
 from .models import CustomerAddress,DeliveryAgentProfile,EmailVerificationToken
 from .serialzers import (
@@ -113,6 +113,12 @@ class LoginView(APIView):
         
         user.last_login = timezone.now()
         user.save(update_fields=["last_login"])
+
+        # fire email notification to user after login 
+       
+        notify_new_login.delay(str(user.id),
+                               ip_address=request.META.get('REMOTE_ADDR'),
+                               user_agent = request.META.get('HTTP_USER_AGENT','Unknown Device')) #type:ignore
         return Response({
             "tokens":    get_tokens_for_user(user),
             "role":      user.role,
