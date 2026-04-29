@@ -59,7 +59,7 @@ jobs:
           DJANGO_SETTINGS_MODULE: config.settings.local
           SECRET_KEY: test-secret-key-not-used-in-production
           ALLOWED_HOSTS: "localhost"
-          CORS_ALLOWED_ORIGINS: "localhost"
+          CORS_ALLOWED_ORIGINS: "http://localhost:5173"
           DEBUG: "True"
           USE_S3: False
           DB_NAME: test_foodrevolut
@@ -81,13 +81,21 @@ jobs:
       - name: Check for missing migrations
         env:
           DJANGO_SETTINGS_MODULE: config.settings.local
-          SECRET_KEY: test-secret-key
+          SECRET_KEY: test-secret-key-not-used-in-production
+          ALLOWED_HOSTS: "localhost"
+          CORS_ALLOWED_ORIGINS: "http://localhost:5173"
+          DEBUG: "True"
+          USE_S3: False
           DB_NAME: test_foodrevolut
           DB_USER: postgres
           DB_PASSWORD: postgres
           DB_HOST: localhost
           DB_PORT: "5432"
           REDIS_URL: ${{ secrets.REDIS_URL }}
+          RAZORPAY_KEY_ID: test_key
+          RAZORPAY_KEY_SECRET: test_secret
+          MAILGUN_API_KEY: test_key
+          MAILGUN_DOMAIN: test.mailgun.org
           DEFAULT_FROM_EMAIL: test@test.com
           FRONTEND_URL: http://localhost:5173
         run: |
@@ -106,6 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: test # only runs if tests pass
     if: github.ref == 'refs/heads/main' # only on main, not PRs
+    environment: aws-deploy
 
     outputs:
       # Pass image URI to deploy job
@@ -157,6 +166,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: github.ref == 'refs/heads/main'
+    environment: aws-deploy
 
     steps:
       - name: Checkout code
@@ -176,9 +186,9 @@ jobs:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.EC2_HOST }} # EC2 public IP
-          username: ubuntu # default EC2 user
-          key: ${{ secrets.EC2_SSH_KEY }} # private SSH key
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
           envs: IMAGE_TAG,AWS_REGION
           script: |
             # ── What runs ON the EC2 server ──────────────────────────────
@@ -186,7 +196,7 @@ jobs:
             # Move to app directory
             cd /home/ubuntu/foodrevolut
 
-                      # Pull latest code (for docker-compose.prod.yaml and nginx config)
+            # Pull latest code (for docker-compose.prod.yaml and nginx config)
             git pull origin main
 
             # Login to ECR from the server
