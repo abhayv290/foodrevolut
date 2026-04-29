@@ -16,22 +16,26 @@ dist/
 .eggs/
 
 # Test / coverage
+tests/
 .pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
 .tox/
 .nox/
+pytest.ini
+.coveragerc
 
 # Type checkers / linters
 .mypy_cache/
 .ruff_cache/
 .pyre/
 .dmypy.json
+ruff.toml
 
 # Django
 *.log
-db.sqlite3
+db.sqlite3        # local dev DB — never in production image
 db.sqlite3-journal
 staticfiles/
 media/
@@ -52,6 +56,8 @@ Thumbs.db
 .git/
 .gitignore
 
-# Docker
-Dockerfile*
-docker-compose*.ya?ml
+# CI/CD & docs
+.github/
+README.md
+docs/
+*.md

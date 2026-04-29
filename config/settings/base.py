@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 #setting up Env
 env = environ.Env(DEBUG=(bool,False))
-environ.Env.read_env(BASE_DIR/'.env')
+# environ.Env.read_env(BASE_DIR/'.env')
 
 
 

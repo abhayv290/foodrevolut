@@ -58,7 +58,10 @@ jobs:
           # Use inline values for test-specific config
           DJANGO_SETTINGS_MODULE: config.settings.local
           SECRET_KEY: test-secret-key-not-used-in-production
+          ALLOWED_HOSTS: "localhost"
+          CORS_ALLOWED_ORIGINS: "localhost"
           DEBUG: "True"
+          USE_S3: False
           DB_NAME: test_foodrevolut
           DB_USER: postgres
           DB_PASSWORD: postgres
@@ -68,9 +71,9 @@ jobs:
           RAZORPAY_KEY_ID: test_key
           RAZORPAY_KEY_SECRET: test_secret
           MAILGUN_API_KEY: test_key
-          MAILGUN_SENDER_DOMAIN: test.mailgun.org
+          MAILGUN_DOMAIN: test.mailgun.org
           DEFAULT_FROM_EMAIL: test@test.com
-          FRONTEND_URL: http://localhost:3000
+          FRONTEND_URL: http://localhost:5173
         run: |
           python manage.py migrate --noinput
           python manage.py test --verbosity=2
@@ -86,7 +89,7 @@ jobs:
           DB_PORT: "5432"
           REDIS_URL: ${{ secrets.REDIS_URL }}
           DEFAULT_FROM_EMAIL: test@test.com
-          FRONTEND_URL: http://localhost:3000
+          FRONTEND_URL: http://localhost:5173
         run: |
           # ── Why check migrations? ───────────────────────────────────────
           # Catches the common mistake of editing a model
@@ -107,6 +110,7 @@ jobs:
     outputs:
       # Pass image URI to deploy job
       image: ${{ steps.build-image.outputs.image }}
+      registry: ${{ steps.login-ecr.outputs.registry }}
 
     steps:
       - name: Checkout code
@@ -158,16 +162,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      # - name: Login to Amazon ECR
+      #   id: login-ecr
+      #   uses: aws-actions/amazon-ecr-login@v2
 
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1
@@ -180,7 +184,7 @@ jobs:
             # ── What runs ON the EC2 server ──────────────────────────────
 
             # Move to app directory
-            cd /home/ubuntu/fooddelivery
+            cd /home/ubuntu/foodrevolut
 
                       # Pull latest code (for docker-compose.prod.yaml and nginx config)
             git pull origin main
@@ -188,11 +192,11 @@ jobs:
             # Login to ECR from the server
             aws ecr get-login-password --region $AWS_REGION | \
               docker login --username AWS --password-stdin \
-              ${{ steps.login-ecr.outputs.registry }}
+              ${{ needs.build.outputs.registry }}
 
             # Export variables for docker-compose
-            export ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
-            export ECR_REPOSITORY=fooddelivery
+            export ECR_REGISTRY=${{ needs.build.outputs.registry }}
+            export ECR_REPOSITORY=${{ env.ECR_REPOSITORY }}
             export IMAGE_TAG=${{ env.IMAGE_TAG }}
 
             # Pull the new image
@@ -216,16 +220,16 @@ jobs:
 
       - name: Health check after deploy
         run: |
-          # Wait for app to start
-          sleep 15
-
-          # Hit health endpoint to verify deployment succeeded
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            http://${{ secrets.EC2_HOST }}/api/health/)
-
-          if [ $response -eq 200 ]; then
-            echo "✅ Health check passed"
-          else
-            echo "❌ Health check failed — HTTP $response"
-            exit 1
-          fi
+          sleep 30
+          for i in $(seq 1 5); do
+            response=$(curl -s -o /dev/null -w "%{http_code}" \
+                 http://${{ secrets.EC2_HOST }}/api/health/)
+               if [ "$response" -eq 200 ]; then
+                 echo "✅ Health check passed"
+                 exit 0
+               fi
+               echo "Attempt $i failed (HTTP $response), retrying..."
+               sleep 10
+             done
+             echo "❌ Health check failed after 5 attempts"
+             exit 1
