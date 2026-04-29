@@ -242,7 +242,7 @@ TEMPLATES = [
 
 
 
-USE_S3  = env('USE_S3')==True
+USE_S3  = env.bool('USE_S3',default=True)
 if USE_S3:
     INSTALLED_APPS += ["storages"]
 
